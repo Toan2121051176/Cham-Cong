@@ -104,7 +104,7 @@
           </div>
           <div class="modal-body">
             <div class="mb-2">
-              <input id="manualCode" class="form-control" placeholder="Mã NV">
+              <select id="manualCode" class="form-select"></select>
             </div>
             <div class="mb-2">
               <label>Check-in:</label>
@@ -150,7 +150,7 @@
           <button onclick="logout()" class="btn btn-outline-danger btn-sm">Đăng xuất</button>
         </div>
       </div>
-      <div class="row mb-3">
+      <div class="row mb-3" id="checkinRow">
         <div class="col-md-6"><button onclick="checkIn()" class="btn btn-success w-100">✅ Check-in</button></div>
         <div class="col-md-6"><button onclick="checkOut()" class="btn btn-danger w-100">⛔ Check-out</button></div>
       </div>
@@ -472,7 +472,31 @@
     }
 
     function showAddRecordModal() {
-      document.getElementById('manualCode').value = '';
+      // Nếu là admin, render danh sách nhân viên
+      const session = getSession();
+      if (session && session.role === 'admin') {
+        getRecords(data => {
+          const select = document.getElementById('manualCode');
+          select.innerHTML = '';
+          const users = {};
+          data.forEach(r => {
+            if (!users[r.code] && r.role !== 'admin') users[r.code] = r;
+          });
+          Object.keys(users).forEach(code => {
+            const opt = document.createElement('option');
+            opt.value = code;
+            // Nếu có cột name thì hiển thị cả tên, không thì chỉ mã
+            if (users[code].name) {
+              opt.textContent = code + ' - ' + users[code].name;
+            } else {
+              opt.textContent = code;
+            }
+            select.appendChild(opt);
+          });
+        });
+      } else {
+        document.getElementById('manualCode').value = '';
+      }
       document.getElementById('manualCheckIn').value = '';
       document.getElementById('manualCheckOut').value = '';
       var modal = new bootstrap.Modal(document.getElementById('addRecordModal'));
@@ -568,6 +592,12 @@
       document.getElementById('mainCard').classList.remove('d-none');
       document.getElementById('currentUser').textContent = session.code;
       document.getElementById('currentRole').textContent = session.role;
+      // Ẩn nút check-in/check-out nếu là admin
+      if (session.role === 'admin') {
+        document.getElementById('checkinRow').classList.add('d-none');
+      } else {
+        document.getElementById('checkinRow').classList.remove('d-none');
+      }
       if (session.role === 'admin') {
         document.getElementById('adminControls').classList.remove('d-none');
         document.getElementById('createUserCard').classList.remove('d-none');
