@@ -290,9 +290,20 @@
         const row = tbody.insertRow();
         row.insertCell().textContent = log.code;
         row.insertCell().textContent = new Date(log.loginTime).toLocaleString();
-        row.insertCell().textContent = (log.lat && log.lon)
-          ? `${log.lat.toFixed(6)}, ${log.lon.toFixed(6)}`
-          : "Không rõ";
+        const cell = row.insertCell();
+        if (log.lat && log.lon) {
+          cell.textContent = 'Đang lấy địa chỉ...';
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${log.lat}&lon=${log.lon}`)
+            .then(res => res.json())
+            .then(data => {
+              cell.textContent = data.display_name || `${log.lat.toFixed(6)}, ${log.lon.toFixed(6)}`;
+            })
+            .catch(() => {
+              cell.textContent = `${log.lat.toFixed(6)}, ${log.lon.toFixed(6)}`;
+            });
+        } else {
+          cell.textContent = 'Không rõ';
+        }
       });
     }
 
