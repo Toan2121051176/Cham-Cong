@@ -243,18 +243,26 @@
     // Check-in
     function checkIn() {
       const session = getSession();
-      const checkIn = new Date().toISOString();
-      fetch(SHEET_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: [{ code: session.code, checkIn }] })
-      })
-        .then(res => res.json())
-        .then(() => {
-          renderTable();
-          alert('✅ Check-in thành công!');
+      getRecords(data => {
+        // Kiểm tra nếu đã có bản ghi check-in chưa check-out
+        const hasOpenCheckIn = data.some(r => r.code === session.code && r.checkIn && !r.checkOut);
+        if (hasOpenCheckIn) {
+          alert('Bạn đã check-in, vui lòng check-out trước khi check-in tiếp!');
+          return;
+        }
+        const checkIn = new Date().toISOString();
+        fetch(SHEET_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: [{ code: session.code, checkIn }] })
         })
-        .catch(() => alert('Lỗi khi check-in!'));
+          .then(res => res.json())
+          .then(() => {
+            renderTable();
+            alert('✅ Check-in thành công!');
+          })
+          .catch(() => alert('Lỗi khi check-in!'));
+      });
     }
 
     // Check-out
@@ -436,9 +444,20 @@
             const row = tbody.insertRow();
             row.insertCell().textContent = log.code;
             row.insertCell().textContent = new Date(log.loginTime).toLocaleString();
-            row.insertCell().textContent = (log.lat && log.lon)
-              ? `${log.lat}, ${log.lon}`
-              : 'Không rõ';
+            const cell = row.insertCell();
+            if (log.lat && log.lon) {
+              cell.textContent = 'Đang lấy địa chỉ...';
+              fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${log.lat}&lon=${log.lon}`)
+                .then(res => res.json())
+                .then(data => {
+                  cell.textContent = data.display_name || `${log.lat}, ${log.lon}`;
+                })
+                .catch(() => {
+                  cell.textContent = `${log.lat}, ${log.lon}`;
+                });
+            } else {
+              cell.textContent = 'Không rõ';
+            }
           });
         });
     }
