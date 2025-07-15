@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Hệ thống chấm công</title>
+  <title>Chấm công Google Sheet</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <style>
@@ -19,10 +19,9 @@
 </head>
 
 <body>
-
   <div class="container">
 
-    <!-- 🔐 Đăng nhập -->
+    <!-- Đăng nhập -->
     <div class="card shadow p-4 mb-4" id="loginCard">
       <h4>🔐 Đăng nhập</h4>
       <div class="row">
@@ -33,7 +32,7 @@
       </div>
     </div>
 
-    <!-- ➕ Tạo tài khoản -->
+    <!-- Tạo tài khoản (chỉ admin) -->
     <div class="card shadow p-4 mb-4 d-none" id="createUserCard">
       <h4>➕ Tạo tài khoản mới (chỉ Admin)</h4>
       <div class="row g-2">
@@ -49,7 +48,7 @@
       </div>
     </div>
 
-    <!-- 👥 Danh sách nhân viên (chỉ admin) -->
+    <!-- Danh sách nhân viên (chỉ admin) -->
     <div class="card shadow p-4 mb-4 d-none" id="userListCard">
       <h4>👥 Danh sách nhân viên</h4>
       <div class="table-responsive">
@@ -66,40 +65,60 @@
       </div>
     </div>
 
-    <!-- ⏱️ Giao diện chính -->
-    <div class="card shadow p-4 mb-4 d-none" id="mainCard">
-      <h4>📅 Chấm công</h4>
-      <div class="row mb-3">
-        <div class="col-md-4"><strong>Mã NV:</strong> <span id="currentUser"></span></div>
-        <div class="col-md-4"><strong>Quyền:</strong> <span id="currentRole"></span></div>
-        <div class="col-md-4 text-end">
-          <button onclick="logout()" class="btn btn-outline-danger btn-sm">Đăng xuất</button>
+    <!-- Modal sửa tài khoản -->
+    <div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editUserModalLabel">Sửa tài khoản</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input id="editUserCode" class="form-control mb-2" placeholder="Mã NV" readonly>
+            <input id="editUserPin" class="form-control mb-2" placeholder="Mật khẩu mới">
+            <select id="editUserRole" class="form-select">
+              <option value="staff">Nhân viên</option>
+              <option value="admin">Quản trị</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            <button type="button" class="btn btn-success" onclick="saveEditUser()">Lưu</button>
+          </div>
         </div>
-      </div>
-      <div class="row mb-3">
-        <div class="col-md-6"><button onclick="checkIn()" class="btn btn-success w-100">✅ Check-in</button></div>
-        <div class="col-md-6"><button onclick="checkOut()" class="btn btn-danger w-100">⛔ Check-out</button></div>
-      </div>
-      <div id="adminControls" class="d-none mb-3">
-        <button onclick="exportToExcel()" class="btn btn-primary">📥 Xuất Excel</button>
-        <button onclick="showAddRecordModal()" class="btn btn-warning ms-2">➕ Chấm công bù</button>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-bordered mt-3" id="attendanceTable">
-          <thead class="table-light">
-            <tr>
-              <th>Mã NV</th>
-              <th>Check-in</th>
-              <th>Check-out</th>
-              <th>Tổng giờ</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
       </div>
     </div>
 
-    <!-- 🕓 Lịch sử đăng nhập -->
+    <!-- Modal Chấm công bù -->
+    <div class="modal fade" id="addRecordModal" tabindex="-1" aria-labelledby="addRecordModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="addRecordModalLabel">➕ Chấm công bù</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-2">
+              <input id="manualCode" class="form-control" placeholder="Mã NV">
+            </div>
+            <div class="mb-2">
+              <label>Check-in:</label>
+              <input id="manualCheckIn" type="datetime-local" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Check-out:</label>
+              <input id="manualCheckOut" type="datetime-local" class="form-control">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            <button type="button" class="btn btn-success" onclick="addManualRecord()">Lưu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lịch sử đăng nhập -->
     <div id="loginHistoryCard" class="card shadow p-4 mt-4 d-none">
       <h5>🕓 Lịch sử đăng nhập</h5>
       <div class="table-responsive">
@@ -116,54 +135,47 @@
       </div>
     </div>
 
-  </div>
-
-  <!-- Modal Chấm công bù -->
-  <div class="modal fade" id="addRecordModal" tabindex="-1" aria-labelledby="addRecordModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="addRecordModalLabel">➕ Chấm công bù</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <!-- Giao diện chính -->
+    <div class="card shadow p-4 mb-4 d-none" id="mainCard">
+      <h4>📅 Chấm công</h4>
+      <div class="row mb-3">
+        <div class="col-md-4"><strong>Mã NV:</strong> <span id="currentUser"></span></div>
+        <div class="col-md-4"><strong>Quyền:</strong> <span id="currentRole"></span></div>
+        <div class="col-md-4 text-end">
+          <button onclick="logout()" class="btn btn-outline-danger btn-sm">Đăng xuất</button>
         </div>
-        <div class="modal-body">
-          <div class="mb-2">
-            <input id="manualCode" class="form-control" placeholder="Mã NV">
-          </div>
-          <div class="mb-2">
-            <label>Check-in:</label>
-            <input id="manualCheckIn" type="datetime-local" class="form-control">
-          </div>
-          <div class="mb-2">
-            <label>Check-out:</label>
-            <input id="manualCheckOut" type="datetime-local" class="form-control">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
-          <button type="button" class="btn btn-success" onclick="addManualRecord()">Lưu</button>
-        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-6"><button onclick="checkIn()" class="btn btn-success w-100">✅ Check-in</button></div>
+        <div class="col-md-6"><button onclick="checkOut()" class="btn btn-danger w-100">⛔ Check-out</button></div>
+      </div>
+      <div id="adminControls" class="d-none mb-3">
+        <button onclick="exportToExcel()" class="btn btn-primary">📥 Xuất Excel</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-bordered mt-3" id="attendanceTable">
+          <thead class="table-light">
+            <tr>
+              <th>Mã NV</th>
+              <th>Check-in</th>
+              <th>Check-out</th>
+              <th>Tổng giờ</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </div>
 
   <script>
     const SHEET_API = 'https://sheetdb.io/api/v1/27oigr7cnxz2f';
+    const SHEET_API_LOGINLOGS = 'https://sheetdb.io/api/v1/27oigr7cnxz2f';
 
-    function getUsers(callback) {
-      fetch(SHEET_API)
-        .then(res => res.json())
-        .then(data => callback(data));
-    }
-
-    function saveUsers(users) {
-      // SheetDB không có hàm save, nên không cần thiết
-    }
-
+    // Đăng nhập
     function login() {
       const code = document.getElementById('loginCode').value.trim();
       const pin = document.getElementById('loginPin').value.trim();
-
       fetch(`${SHEET_API}/search?code=${code}&pin=${pin}`)
         .then(res => res.json())
         .then(data => {
@@ -171,27 +183,26 @@
             alert("Sai mã hoặc mật khẩu!");
             return;
           }
-          // Lưu session vào localStorage (chỉ để nhớ trạng thái đăng nhập)
+          // Lưu log đăng nhập
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              pos => saveLoginLog(code, pos.coords.latitude, pos.coords.longitude),
+              err => saveLoginLog(code, null, null)
+            );
+          } else {
+            saveLoginLog(code, null, null);
+          }
           localStorage.setItem('session', JSON.stringify({ code, role: data[0].role }));
           showMainUI();
         });
     }
 
-    function saveLoginLog(code, lat, lon) {
-      // SheetDB không có hàm save, nên không cần thiết
-    }
-
-    function finishLogin(code, role) {
-      // SheetDB không có hàm save, nên không cần thiết
-    }
-
+    // Tạo tài khoản mới (chỉ admin)
     function createUser() {
       const code = document.getElementById('newCode').value.trim();
       const pin = document.getElementById('newPin').value.trim();
       const role = document.getElementById('newRole').value;
       if (!code || !pin) return alert("Nhập đủ thông tin!");
-
-      // Kiểm tra trùng mã NV
       fetch(`${SHEET_API}/search?code=${code}`)
         .then(res => res.json())
         .then(data => {
@@ -204,7 +215,10 @@
               body: JSON.stringify({ data: [{ code, pin, role }] })
             })
               .then(res => res.json())
-              .then(() => alert('✅ Tạo thành công!'))
+              .then(() => {
+                alert('✅ Tạo thành công!');
+                renderTable();
+              })
               .catch(() => alert('Lỗi khi tạo tài khoản!'));
           }
         });
@@ -219,16 +233,14 @@
       return JSON.parse(localStorage.getItem('session'));
     }
 
+    // Lấy tất cả bản ghi chấm công
     function getRecords(callback) {
       fetch(SHEET_API)
         .then(res => res.json())
         .then(data => callback(data));
     }
 
-    function saveRecords(records) {
-      // SheetDB không có hàm save, nên không cần thiết
-    }
-
+    // Check-in
     function checkIn() {
       const session = getSession();
       const checkIn = new Date().toISOString();
@@ -245,21 +257,21 @@
         .catch(() => alert('Lỗi khi check-in!'));
     }
 
+    // Check-out
     function checkOut() {
       const session = getSession();
-      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
       getRecords(data => {
-        records = data.filter(r => r.code === session.code && !r.checkOut);
-        if (records.length === 0) {
+        // Tìm bản ghi check-in chưa check-out
+        const record = data.reverse().find(r => r.code === session.code && r.checkIn && !r.checkOut);
+        if (!record) {
           alert("Chưa check-in!");
           return;
         }
-        const record = records[0];
         record.checkOut = new Date().toISOString();
-        fetch(SHEET_API, {
-          method: 'PUT',
+        fetch(`${SHEET_API}/code/${record.code}`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: [{ ...record }] })
+          body: JSON.stringify({ data: [{ checkOut: record.checkOut }] })
         })
           .then(res => res.json())
           .then(() => {
@@ -270,14 +282,16 @@
       });
     }
 
+    // Hiển thị bảng chấm công
     function renderTable() {
       const tbody = document.querySelector("#attendanceTable tbody");
       tbody.innerHTML = "";
       const session = getSession();
-      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
       getRecords(data => {
-        records = data.filter(r => r.code === session.code);
-
+        let records = data;
+        if (session.role !== 'admin') {
+          records = records.filter(r => r.code === session.code);
+        }
         records.forEach(r => {
           const row = tbody.insertRow();
           row.insertCell().textContent = r.code;
@@ -290,13 +304,13 @@
       });
     }
 
+    // Xuất Excel (chỉ admin)
     function exportToExcel() {
       const session = getSession();
       if (!session || session.role !== 'admin') return;
-      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
       getRecords(data => {
-        records = data.filter(r => r.code === session.code);
-        const data = records.map(r => ({
+        const records = data;
+        const excelData = records.map(r => ({
           'Mã NV': r.code,
           'Check-in': r.checkIn ? new Date(r.checkIn).toLocaleString() : '',
           'Check-out': r.checkOut ? new Date(r.checkOut).toLocaleString() : '',
@@ -304,47 +318,73 @@
             ? ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2)
             : ''
         }));
-        const ws = XLSX.utils.json_to_sheet(data);
+        const ws = XLSX.utils.json_to_sheet(excelData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "ChamCong");
         XLSX.writeFile(wb, "chamcong.xlsx");
       });
     }
 
-    function renderLoginLogs() {
-      const tbody = document.getElementById("loginLogsTable");
-      tbody.innerHTML = "";
-      // SheetDB không có hàm lấy lịch sử đăng nhập, nên không thể hiển thị
-    }
-
     function renderUserList() {
       const tbody = document.getElementById('userListTable');
       tbody.innerHTML = '';
-      // SheetDB không có hàm lấy danh sách nhân viên, nên không thể hiển thị
+      getRecords(data => {
+        const users = {};
+        data.forEach(r => {
+          if (!users[r.code]) users[r.code] = r.role;
+        });
+        Object.keys(users).forEach(code => {
+          const row = tbody.insertRow();
+          row.insertCell().textContent = code;
+          row.insertCell().textContent = users[code] === 'admin' ? 'Quản trị' : 'Nhân viên';
+          const actionCell = row.insertCell();
+          actionCell.innerHTML = `
+            <button class='btn btn-sm btn-primary me-1' onclick='showEditUserModal("${code}", "${users[code]}")'>Sửa</button>
+            <button class='btn btn-sm btn-danger' onclick='deleteUser("${code}")'>Xóa</button>
+          `;
+        });
+      });
+    }
+
+    function showEditUserModal(code, role) {
+      document.getElementById('editUserCode').value = code;
+      document.getElementById('editUserPin').value = '';
+      document.getElementById('editUserRole').value = role;
+      var modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+      modal.show();
+    }
+
+    function saveEditUser() {
+      const code = document.getElementById('editUserCode').value;
+      const pin = document.getElementById('editUserPin').value;
+      const role = document.getElementById('editUserRole').value;
+      const data = {};
+      if (pin) data.pin = pin;
+      data.role = role;
+      fetch(`${SHEET_API}/code/${code}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [data] })
+      })
+        .then(res => res.json())
+        .then(() => {
+          alert('Đã cập nhật tài khoản!');
+          renderUserList();
+          var modal = bootstrap.Modal.getInstance(document.getElementById('editUserModal'));
+          modal.hide();
+        });
     }
 
     function deleteUser(code) {
       if (!confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
-      // SheetDB không có hàm xóa, nên không thể thực hiện
-      alert('Xóa nhân viên không thể thực hiện được với SheetDB.');
-    }
-
-    function showMainUI() {
-      const session = getSession();
-      if (!session) return;
-      document.getElementById('loginCard').classList.add('d-none');
-      document.getElementById('mainCard').classList.remove('d-none');
-      document.getElementById('currentUser').textContent = session.code;
-      document.getElementById('currentRole').textContent = session.role;
-      if (session.role === 'admin') {
-        document.getElementById('adminControls').classList.remove('d-none');
-        document.getElementById('createUserCard').classList.remove('d-none');
-        document.getElementById('loginHistoryCard').classList.remove('d-none');
-        document.getElementById('userListCard').classList.remove('d-none');
-        renderLoginLogs();
-        renderUserList();
-      }
-      renderTable();
+      fetch(`${SHEET_API}/code/${code}`, {
+        method: 'DELETE'
+      })
+        .then(res => res.json())
+        .then(() => {
+          alert('Đã xóa nhân viên!');
+          renderUserList();
+        });
     }
 
     function showAddRecordModal() {
@@ -363,42 +403,71 @@
         alert('Nhập đủ thông tin!');
         return;
       }
-      const users = []; // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
-      if (users.length === 0) { // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
-        alert('Mã NV không tồn tại!');
-        return;
-      }
-      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
-      getRecords(data => {
-        records = data.filter(r => r.code === code);
-        if (records.length > 0) {
-          alert('Mã NV đã tồn tại!');
-          return;
-        }
-        fetch(SHEET_API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: [{ code, checkIn: new Date(checkIn).toISOString(), checkOut: new Date(checkOut).toISOString() }] })
+      fetch(SHEET_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [{ code, checkIn: new Date(checkIn).toISOString(), checkOut: new Date(checkOut).toISOString() }] })
+      })
+        .then(res => res.json())
+        .then(() => {
+          renderTable();
+          alert('✅ Đã thêm chấm công bù!');
+          var modal = bootstrap.Modal.getInstance(document.getElementById('addRecordModal'));
+          modal.hide();
         })
-          .then(res => res.json())
-          .then(() => {
-            renderTable();
-            alert('✅ Đã thêm chấm công bù!');
-            var modal = bootstrap.Modal.getInstance(document.getElementById('addRecordModal'));
-            modal.hide();
-          })
-          .catch(() => alert('Lỗi khi thêm chấm công bù!'));
+        .catch(() => alert('Lỗi khi thêm chấm công bù!'));
+    }
+
+    function saveLoginLog(code, lat, lon) {
+      fetch(SHEET_API_LOGINLOGS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [{ code, loginTime: new Date().toISOString(), lat, lon }] })
       });
     }
 
+    function renderLoginLogs() {
+      const tbody = document.getElementById('loginLogsTable');
+      tbody.innerHTML = '';
+      fetch(SHEET_API_LOGINLOGS)
+        .then(res => res.json())
+        .then(logs => {
+          logs.slice().reverse().forEach(log => {
+            const row = tbody.insertRow();
+            row.insertCell().textContent = log.code;
+            row.insertCell().textContent = new Date(log.loginTime).toLocaleString();
+            row.insertCell().textContent = (log.lat && log.lon)
+              ? `${log.lat}, ${log.lon}`
+              : 'Không rõ';
+          });
+        });
+    }
+
+    // Hiển thị giao diện chính
+    function showMainUI() {
+      const session = getSession();
+      if (!session) return;
+      document.getElementById('loginCard').classList.add('d-none');
+      document.getElementById('mainCard').classList.remove('d-none');
+      document.getElementById('currentUser').textContent = session.code;
+      document.getElementById('currentRole').textContent = session.role;
+      if (session.role === 'admin') {
+        document.getElementById('adminControls').classList.remove('d-none');
+        document.getElementById('createUserCard').classList.remove('d-none');
+        document.getElementById('userListCard').classList.remove('d-none');
+        document.getElementById('loginHistoryCard').classList.remove('d-none');
+        renderUserList();
+        renderLoginLogs();
+      }
+      renderTable();
+    }
+
     window.onload = () => {
-      // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
       if (getSession()) {
         showMainUI();
       }
     };
   </script>
-
 </body>
 
 </html>
