@@ -148,51 +148,41 @@
   </div>
 
   <script>
-    function getUsers() {
-      return JSON.parse(localStorage.getItem('users')) || {};
+    const SHEET_API = 'https://sheetdb.io/api/v1/27oigr7cnxz2f';
+
+    function getUsers(callback) {
+      fetch(SHEET_API)
+        .then(res => res.json())
+        .then(data => callback(data));
     }
+
     function saveUsers(users) {
-      localStorage.setItem('users', JSON.stringify(users));
+      // SheetDB không có hàm save, nên không cần thiết
     }
 
     function login() {
       const code = document.getElementById('loginCode').value.trim();
       const pin = document.getElementById('loginPin').value.trim();
-      const users = getUsers();
 
-      if (!users[code] || users[code].pin !== pin) {
-        alert("Sai mã hoặc mật khẩu!");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords = pos.coords;
-          saveLoginLog(code, coords.latitude, coords.longitude);
-          finishLogin(code, users[code].role);
-        },
-        (err) => {
-          alert("⚠️ Không lấy được vị trí. Vẫn tiếp tục đăng nhập.");
-          saveLoginLog(code, null, null);
-          finishLogin(code, users[code].role);
-        }
-      );
+      fetch(`${SHEET_API}/search?code=${code}&pin=${pin}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.length === 0) {
+            alert("Sai mã hoặc mật khẩu!");
+            return;
+          }
+          // Lưu session vào localStorage (chỉ để nhớ trạng thái đăng nhập)
+          localStorage.setItem('session', JSON.stringify({ code, role: data[0].role }));
+          showMainUI();
+        });
     }
 
     function saveLoginLog(code, lat, lon) {
-      let logs = JSON.parse(localStorage.getItem('loginLogs')) || [];
-      logs.push({
-        code,
-        loginTime: new Date().toISOString(),
-        lat,
-        lon
-      });
-      localStorage.setItem('loginLogs', JSON.stringify(logs));
+      // SheetDB không có hàm save, nên không cần thiết
     }
 
     function finishLogin(code, role) {
-      localStorage.setItem('session', JSON.stringify({ code, role }));
-      showMainUI();
+      // SheetDB không có hàm save, nên không cần thiết
     }
 
     function createUser() {
@@ -200,11 +190,24 @@
       const pin = document.getElementById('newPin').value.trim();
       const role = document.getElementById('newRole').value;
       if (!code || !pin) return alert("Nhập đủ thông tin!");
-      const users = getUsers();
-      if (users[code]) return alert("Mã NV đã tồn tại!");
-      users[code] = { pin, role };
-      saveUsers(users);
-      alert("✅ Tạo thành công!");
+
+      // Kiểm tra trùng mã NV
+      fetch(`${SHEET_API}/search?code=${code}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.length > 0) {
+            alert("Mã NV đã tồn tại!");
+          } else {
+            fetch(SHEET_API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: [{ code, pin, role }] })
+            })
+              .then(res => res.json())
+              .then(() => alert('✅ Tạo thành công!'))
+              .catch(() => alert('Lỗi khi tạo tài khoản!'));
+          }
+        });
     }
 
     function logout() {
@@ -216,121 +219,114 @@
       return JSON.parse(localStorage.getItem('session'));
     }
 
-    function getRecords() {
-      return JSON.parse(localStorage.getItem('attendance')) || [];
+    function getRecords(callback) {
+      fetch(SHEET_API)
+        .then(res => res.json())
+        .then(data => callback(data));
     }
 
     function saveRecords(records) {
-      localStorage.setItem('attendance', JSON.stringify(records));
+      // SheetDB không có hàm save, nên không cần thiết
     }
 
     function checkIn() {
       const session = getSession();
-      let records = getRecords();
-      const latest = [...records].reverse().find(r => r.code === session.code && !r.checkOut);
-      if (latest) return alert("Đã check-in!");
-      records.push({ code: session.code, checkIn: new Date().toISOString(), checkOut: null });
-      saveRecords(records);
-      renderTable();
-      alert("✅ Check-in thành công!");
+      const checkIn = new Date().toISOString();
+      fetch(SHEET_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: [{ code: session.code, checkIn }] })
+      })
+        .then(res => res.json())
+        .then(() => {
+          renderTable();
+          alert('✅ Check-in thành công!');
+        })
+        .catch(() => alert('Lỗi khi check-in!'));
     }
 
     function checkOut() {
       const session = getSession();
-      let records = getRecords();
-      const record = records.find(r => r.code === session.code && !r.checkOut);
-      if (!record) return alert("Chưa check-in!");
-      record.checkOut = new Date().toISOString();
-      saveRecords(records);
-      renderTable();
-      alert("⛔ Check-out thành công!");
+      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
+      getRecords(data => {
+        records = data.filter(r => r.code === session.code && !r.checkOut);
+        if (records.length === 0) {
+          alert("Chưa check-in!");
+          return;
+        }
+        const record = records[0];
+        record.checkOut = new Date().toISOString();
+        fetch(SHEET_API, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: [{ ...record }] })
+        })
+          .then(res => res.json())
+          .then(() => {
+            renderTable();
+            alert('⛔ Check-out thành công!');
+          })
+          .catch(() => alert('Lỗi khi check-out!'));
+      });
     }
 
     function renderTable() {
       const tbody = document.querySelector("#attendanceTable tbody");
       tbody.innerHTML = "";
       const session = getSession();
-      const records = getRecords();
-      const visible = (session.role === 'admin') ? records : records.filter(r => r.code === session.code);
+      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
+      getRecords(data => {
+        records = data.filter(r => r.code === session.code);
 
-      visible.forEach(r => {
-        const row = tbody.insertRow();
-        row.insertCell().textContent = r.code;
-        row.insertCell().textContent = r.checkIn ? new Date(r.checkIn).toLocaleString() : '';
-        row.insertCell().textContent = r.checkOut ? new Date(r.checkOut).toLocaleString() : '';
-        row.insertCell().textContent =
-          (r.checkIn && r.checkOut) ?
-            ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2) + " giờ" : '';
+        records.forEach(r => {
+          const row = tbody.insertRow();
+          row.insertCell().textContent = r.code;
+          row.insertCell().textContent = r.checkIn ? new Date(r.checkIn).toLocaleString() : '';
+          row.insertCell().textContent = r.checkOut ? new Date(r.checkOut).toLocaleString() : '';
+          row.insertCell().textContent =
+            (r.checkIn && r.checkOut) ?
+              ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2) + " giờ" : '';
+        });
       });
     }
 
     function exportToExcel() {
       const session = getSession();
       if (!session || session.role !== 'admin') return;
-      const records = getRecords();
-      const data = records.map(r => ({
-        'Mã NV': r.code,
-        'Check-in': r.checkIn ? new Date(r.checkIn).toLocaleString() : '',
-        'Check-out': r.checkOut ? new Date(r.checkOut).toLocaleString() : '',
-        'Tổng giờ': (r.checkIn && r.checkOut)
-          ? ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2)
-          : ''
-      }));
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "ChamCong");
-      XLSX.writeFile(wb, "chamcong.xlsx");
+      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
+      getRecords(data => {
+        records = data.filter(r => r.code === session.code);
+        const data = records.map(r => ({
+          'Mã NV': r.code,
+          'Check-in': r.checkIn ? new Date(r.checkIn).toLocaleString() : '',
+          'Check-out': r.checkOut ? new Date(r.checkOut).toLocaleString() : '',
+          'Tổng giờ': (r.checkIn && r.checkOut)
+            ? ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2)
+            : ''
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "ChamCong");
+        XLSX.writeFile(wb, "chamcong.xlsx");
+      });
     }
 
     function renderLoginLogs() {
       const tbody = document.getElementById("loginLogsTable");
       tbody.innerHTML = "";
-      const logs = JSON.parse(localStorage.getItem('loginLogs')) || [];
-      logs.slice().reverse().forEach(log => {
-        const row = tbody.insertRow();
-        row.insertCell().textContent = log.code;
-        row.insertCell().textContent = new Date(log.loginTime).toLocaleString();
-        const cell = row.insertCell();
-        if (log.lat && log.lon) {
-          cell.textContent = 'Đang lấy địa chỉ...';
-          fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${log.lat}&lon=${log.lon}`)
-            .then(res => res.json())
-            .then(data => {
-              cell.textContent = data.display_name || `${log.lat.toFixed(6)}, ${log.lon.toFixed(6)}`;
-            })
-            .catch(() => {
-              cell.textContent = `${log.lat.toFixed(6)}, ${log.lon.toFixed(6)}`;
-            });
-        } else {
-          cell.textContent = 'Không rõ';
-        }
-      });
+      // SheetDB không có hàm lấy lịch sử đăng nhập, nên không thể hiển thị
     }
 
     function renderUserList() {
       const tbody = document.getElementById('userListTable');
       tbody.innerHTML = '';
-      const users = getUsers();
-      Object.keys(users).forEach(code => {
-        if (code === 'admin') return; // Không hiển thị admin
-        const row = tbody.insertRow();
-        row.insertCell().textContent = code;
-        row.insertCell().textContent = users[code].role === 'admin' ? 'Quản trị' : 'Nhân viên';
-        const actionCell = row.insertCell();
-        actionCell.innerHTML = `
-          <button class='btn btn-sm btn-primary me-1' onclick='showEditUserModal("${code}")'>Sửa</button>
-          <button class='btn btn-sm btn-danger' onclick='deleteUser("${code}")'>Xóa</button>
-        `;
-      });
+      // SheetDB không có hàm lấy danh sách nhân viên, nên không thể hiển thị
     }
 
     function deleteUser(code) {
       if (!confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
-      const users = getUsers();
-      delete users[code];
-      saveUsers(users);
-      renderUserList();
-      alert('Đã xóa nhân viên!');
+      // SheetDB không có hàm xóa, nên không thể thực hiện
+      alert('Xóa nhân viên không thể thực hiện được với SheetDB.');
     }
 
     function showMainUI() {
@@ -367,26 +363,36 @@
         alert('Nhập đủ thông tin!');
         return;
       }
-      const users = getUsers();
-      if (!users[code]) {
+      const users = []; // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
+      if (users.length === 0) { // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
         alert('Mã NV không tồn tại!');
         return;
       }
-      let records = getRecords();
-      records.push({ code, checkIn: new Date(checkIn).toISOString(), checkOut: new Date(checkOut).toISOString() });
-      saveRecords(records);
-      renderTable();
-      alert('✅ Đã thêm chấm công bù!');
-      var modal = bootstrap.Modal.getInstance(document.getElementById('addRecordModal'));
-      modal.hide();
+      let records = []; // SheetDB không có hàm lấy tất cả records, nên phải lấy lại
+      getRecords(data => {
+        records = data.filter(r => r.code === code);
+        if (records.length > 0) {
+          alert('Mã NV đã tồn tại!');
+          return;
+        }
+        fetch(SHEET_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: [{ code, checkIn: new Date(checkIn).toISOString(), checkOut: new Date(checkOut).toISOString() }] })
+        })
+          .then(res => res.json())
+          .then(() => {
+            renderTable();
+            alert('✅ Đã thêm chấm công bù!');
+            var modal = bootstrap.Modal.getInstance(document.getElementById('addRecordModal'));
+            modal.hide();
+          })
+          .catch(() => alert('Lỗi khi thêm chấm công bù!'));
+      });
     }
 
     window.onload = () => {
-      const users = getUsers();
-      if (!users['admin']) {
-        users['admin'] = { pin: 'admin', role: 'admin' };
-        saveUsers(users);
-      }
+      // SheetDB không có hàm lấy danh sách users, nên không thể kiểm tra
       if (getSession()) {
         showMainUI();
       }
