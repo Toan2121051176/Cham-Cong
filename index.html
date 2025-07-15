@@ -155,8 +155,14 @@
         <div class="col-md-6"><button onclick="checkOut()" class="btn btn-danger w-100">⛔ Check-out</button></div>
       </div>
       <div id="adminControls" class="d-none mb-3">
+        <div class="row mb-2" id="monthPickerRow">
+          <div class="col-auto">
+            <input type="month" id="monthPicker" class="form-control" value="">
+          </div>
+        </div>
         <button onclick="exportToExcel()" class="btn btn-primary">📥 Xuất Excel</button>
       </div>
+      <div id="summaryTableContainer" class="mb-3"></div>
       <div class="table-responsive">
         <table class="table table-bordered mt-3" id="attendanceTable">
           <thead class="table-light">
@@ -181,6 +187,12 @@
     function login() {
       const code = document.getElementById('loginCode').value.trim();
       const pin = document.getElementById('loginPin').value.trim();
+      // Fix cứng tài khoản admin
+      if (code === 'admin' && pin === 'admin') {
+        localStorage.setItem('session', JSON.stringify({ code: 'admin', role: 'admin' }));
+        showMainUI();
+        return;
+      }
       fetch(`${SHEET_API}/search?code=${code}&pin=${pin}`)
         .then(res => res.json())
         .then(data => {
@@ -314,6 +326,50 @@
             (r.checkIn && r.checkOut) ?
               ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2) + " giờ" : '';
         });
+        // Nếu là nhân viên, thêm dòng tổng số giờ vào cuối bảng
+        if (session.role !== 'admin') {
+          const userMonthPicker = document.getElementById('userMonthPicker');
+          let year, month;
+          if (userMonthPicker && userMonthPicker.value) {
+            [year, month] = userMonthPicker.value.split('-').map(Number);
+          } else {
+            const now = new Date();
+            year = now.getFullYear();
+            month = now.getMonth() + 1;
+          }
+          const monthRecords = filterRecordsByMonth(records, year, month);
+          let total = 0;
+          monthRecords.forEach(r => {
+            if (r.checkIn && r.checkOut) {
+              total += (new Date(r.checkOut) - new Date(r.checkIn)) / 3600000;
+            }
+          });
+          const row = tbody.insertRow();
+          row.insertCell().textContent = '';
+          row.insertCell().textContent = '';
+          row.insertCell().textContent = 'Tổng cộng';
+          row.insertCell().textContent = total.toFixed(2) + ' giờ';
+        }
+      });
+    }
+
+    function filterRecordsByCurrentMonth(records) {
+      const now = new Date();
+      const month = now.getMonth();
+      const year = now.getFullYear();
+      return records.filter(r => {
+        if (!r.checkIn) return false;
+        const d = new Date(r.checkIn);
+        return d.getMonth() === month && d.getFullYear() === year;
+      });
+    }
+
+    // Lọc theo tháng/năm bất kỳ
+    function filterRecordsByMonth(records, year, month) {
+      return records.filter(r => {
+        if (!r.checkIn) return false;
+        const d = new Date(r.checkIn);
+        return d.getMonth() + 1 === month && d.getFullYear() === year;
       });
     }
 
@@ -321,20 +377,35 @@
     function exportToExcel() {
       const session = getSession();
       if (!session || session.role !== 'admin') return;
+      const monthPicker = document.getElementById('monthPicker');
+      let year, month;
+      if (monthPicker && monthPicker.value) {
+        [year, month] = monthPicker.value.split('-').map(Number);
+      } else {
+        const now = new Date();
+        year = now.getFullYear();
+        month = now.getMonth() + 1;
+      }
       getRecords(data => {
-        const records = data;
-        const excelData = records.map(r => ({
+        // Lọc dữ liệu theo tháng/năm đã chọn
+        const monthRecords = filterRecordsByMonth(data, year, month);
+
+        // Tạo dữ liệu chi tiết từng ngày
+        const excelData = monthRecords.map(r => ({
           'Mã NV': r.code,
-          'Check-in': r.checkIn ? new Date(r.checkIn).toLocaleString() : '',
-          'Check-out': r.checkOut ? new Date(r.checkOut).toLocaleString() : '',
+          'Ngày': r.checkIn ? new Date(r.checkIn).toLocaleDateString() : '',
+          'Check-in': r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '',
+          'Check-out': r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '',
           'Tổng giờ': (r.checkIn && r.checkOut)
             ? ((new Date(r.checkOut) - new Date(r.checkIn)) / 3600000).toFixed(2)
             : ''
         }));
+
+        // Xuất file
         const ws = XLSX.utils.json_to_sheet(excelData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "ChamCong");
-        XLSX.writeFile(wb, "chamcong.xlsx");
+        XLSX.utils.book_append_sheet(wb, ws, `ChiTiet_${month}_${year}`);
+        XLSX.writeFile(wb, `chamcong_chitiet_${month}_${year}.xlsx`);
       });
     }
 
@@ -467,6 +538,28 @@
         });
     }
 
+    function renderSummaryTable(year, month) {
+      getRecords(data => {
+        const monthRecords = filterRecordsByMonth(data, year, month);
+        // Gom nhóm theo mã NV và tính tổng giờ
+        const userHours = {};
+        monthRecords.forEach(r => {
+          if (r.checkIn && r.checkOut) {
+            const hours = (new Date(r.checkOut) - new Date(r.checkIn)) / 3600000;
+            if (!userHours[r.code]) userHours[r.code] = 0;
+            userHours[r.code] += hours;
+          }
+        });
+        // Tạo bảng HTML
+        let html = '<table class="table table-bordered"><thead><tr><th>Mã NV</th><th>Tổng giờ trong tháng</th></tr></thead><tbody>';
+        Object.keys(userHours).forEach(code => {
+          html += `<tr><td>${code}</td><td>${userHours[code].toFixed(2)} giờ</td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('summaryTableContainer').innerHTML = html;
+      });
+    }
+
     // Hiển thị giao diện chính
     function showMainUI() {
       const session = getSession();
@@ -484,11 +577,75 @@
         renderLoginLogs();
       }
       renderTable();
+      // Hiển thị tổng giờ tháng cho nhân viên
+      if (session.role !== 'admin') {
+        // Thêm input chọn tháng cho nhân viên nếu chưa có
+        let pickerRow = document.getElementById('userMonthPickerRow');
+        if (!pickerRow) {
+          pickerRow = document.createElement('div');
+          pickerRow.className = 'row mb-2';
+          pickerRow.id = 'userMonthPickerRow';
+          pickerRow.innerHTML = `<div class="col-auto"><input type="month" id="userMonthPicker" class="form-control"></div>`;
+          document.getElementById('mainCard').prepend(pickerRow);
+        }
+        // Đặt giá trị mặc định
+        const userMonthPicker = document.getElementById('userMonthPicker');
+        if (userMonthPicker && !userMonthPicker.value) {
+          const now = new Date();
+          userMonthPicker.value = now.toISOString().slice(0, 7);
+        }
+        function updateUserTotalHours() {
+          const picker = document.getElementById('userMonthPicker');
+          let year, month;
+          if (picker && picker.value) {
+            [year, month] = picker.value.split('-').map(Number);
+          } else {
+            const now = new Date();
+            year = now.getFullYear();
+            month = now.getMonth() + 1;
+          }
+          getRecords(data => {
+            const monthRecords = filterRecordsByMonth(data.filter(r => r.code === session.code), year, month);
+            let total = 0;
+            monthRecords.forEach(r => {
+              if (r.checkIn && r.checkOut) {
+                total += (new Date(r.checkOut) - new Date(r.checkIn)) / 3600000;
+              }
+            });
+            // Thêm dòng hiển thị tổng giờ
+            let infoDiv = document.getElementById('totalHoursInfo');
+            if (!infoDiv) {
+              infoDiv = document.createElement('div');
+              infoDiv.id = 'totalHoursInfo';
+              infoDiv.className = 'alert alert-info mt-2';
+              pickerRow.after(infoDiv);
+            }
+            infoDiv.textContent = `Tổng số giờ làm trong tháng ${month}/${year}: ${total.toFixed(2)} giờ`;
+          });
+        }
+        if (userMonthPicker) {
+          userMonthPicker.onchange = updateUserTotalHours;
+        }
+        updateUserTotalHours();
+      }
     }
 
     window.onload = () => {
       if (getSession()) {
         showMainUI();
+      }
+      // Đặt giá trị mặc định cho monthPicker
+      const monthPicker = document.getElementById('monthPicker');
+      if (monthPicker) {
+        const now = new Date();
+        monthPicker.value = now.toISOString().slice(0, 7);
+        // Gọi bảng tổng hợp lần đầu
+        let [year, month] = monthPicker.value.split('-').map(Number);
+        renderSummaryTable(year, month);
+        monthPicker.onchange = function () {
+          let [year, month] = monthPicker.value.split('-').map(Number);
+          renderSummaryTable(year, month);
+        };
       }
     };
   </script>
